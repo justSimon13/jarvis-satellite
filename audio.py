@@ -80,7 +80,7 @@ VAD_BLOCKSIZE = 512           # Silero VAD benötigt 512 samples @ 16kHz
 VAD_MAX_SECONDS = 30          # Maximale Aufnahmedauer
 
 # Silero VAD: Schwelle + Stille-Dauer (viel kürzer möglich da neural)
-_SILERO_THRESHOLD = 0.4       # Sprach-Wahrscheinlichkeit ab der als Sprache gilt
+_SILERO_THRESHOLD = 0.2       # Sprach-Wahrscheinlichkeit ab der als Sprache gilt
 _SILENCE_MS = 1500            # ms Stille bis VAD "end" feuert — Engine akkumuliert danach weiter
 
 _silero_model = None
