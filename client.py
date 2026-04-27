@@ -255,9 +255,10 @@ async def _run():
                     threading.Thread(
                         target=_record_loop, args=(ws, loop, stop_event), daemon=True
                     ).start()
-                    threading.Thread(
-                        target=_interrupt_watcher, args=(stop_event,), daemon=True
-                    ).start()
+                    if os.getenv("INTERRUPT_WATCHER", "false").lower() == "true":
+                        threading.Thread(
+                            target=_interrupt_watcher, args=(stop_event,), daemon=True
+                        ).start()
                 else:
                     print("[client] TEXT_ONLY-Modus — Eingabe über Tastatur.", flush=True)
 
