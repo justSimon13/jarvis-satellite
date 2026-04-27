@@ -6,6 +6,7 @@ Verbindet via WebSocket mit dem JARVIS-Server (HP EliteDesk).
   JARVIS_SERVER=ws://100.x.x.x:8765   ← Tailscale-IP des Servers
   MANUAL_MODE=false                    ← true = kein Wake Word
   AUDIO_INPUT_DEVICE=                  ← leer = System-Default
+  TEXT_ONLY=false                      ← true = kein Mikrofon, nur Tastatur
 
 Start: python3 client.py
 """
@@ -16,6 +17,7 @@ import os
 import queue
 import sys
 import threading
+import time
 
 import numpy as np
 import sounddevice as sd
@@ -30,21 +32,70 @@ MANUAL_MODE = os.getenv("MANUAL_MODE", "false").lower() == "true"
 TEXT_ONLY = os.getenv("TEXT_ONLY", "false").lower() == "true"
 AUDIO_INPUT_DEVICE = os.getenv("AUDIO_INPUT_DEVICE")
 
+# Gesetzt während JARVIS spricht — Record-Loop pausiert dann
+_jarvis_speaking = threading.Event()
+# Gesetzt wenn JARVIS unterbrochen werden soll
+_interrupt_playback = threading.Event()
+
 
 # ── Audioausgabe ──────────────────────────────────────────────────────────────
 
 def _play_loop(audio_queue: queue.Queue):
-    """Spielt eingehende PCM-Chunks vom Server ab."""
-    with sd.OutputStream(
-        samplerate=P.PCM_SAMPLERATE,
-        channels=P.PCM_CHANNELS,
-        dtype=P.PCM_DTYPE,
-    ) as stream:
-        while True:
-            chunk = audio_queue.get()
-            if chunk is None:
-                break
-            stream.write(np.frombuffer(chunk, dtype=np.int16))
+    """Spielt eingehende PCM-Chunks vom Server ab. Stoppt bei _interrupt_playback."""
+    IDLE_TIMEOUT = 0.4
+
+    while True:
+        chunk = audio_queue.get()
+        if chunk is None:
+            break
+
+        _interrupt_playback.clear()
+        _jarvis_speaking.set()
+        try:
+            with sd.OutputStream(
+                samplerate=P.PCM_SAMPLERATE,
+                channels=P.PCM_CHANNELS,
+                dtype=P.PCM_DTYPE,
+            ) as stream:
+                stream.write(np.frombuffer(chunk, dtype=np.int16))
+                while not _interrupt_playback.is_set():
+                    try:
+                        chunk = audio_queue.get(timeout=IDLE_TIMEOUT)
+                        if chunk is None:
+                            return
+                        stream.write(np.frombuffer(chunk, dtype=np.int16))
+                    except queue.Empty:
+                        break
+                if _interrupt_playback.is_set():
+                    # Queue leeren damit altes Audio nicht nachläuft
+                    while not audio_queue.empty():
+                        try:
+                            audio_queue.get_nowait()
+                        except queue.Empty:
+                            break
+                    print("[client] Wiedergabe unterbrochen.", flush=True)
+        finally:
+            time.sleep(0.3)
+            _jarvis_speaking.clear()
+
+
+# ── Wake Word während Wiedergabe ──────────────────────────────────────────────
+
+def _interrupt_watcher(stop_event: threading.Event):
+    """Läuft parallel — erkennt Wake Word während JARVIS spricht und unterbricht."""
+    import audio
+    while not stop_event.is_set():
+        if not _jarvis_speaking.is_set():
+            stop_event.wait(timeout=0.2)
+            continue
+        try:
+            interrupt = threading.Event()
+            audio.listen_for_wake_word(interrupt=interrupt)
+            if _jarvis_speaking.is_set():
+                _interrupt_playback.set()
+                print("[client] Wake Word erkannt — unterbreche JARVIS.", flush=True)
+        except Exception:
+            pass
 
 
 # ── Aufnahme ──────────────────────────────────────────────────────────────────
@@ -54,7 +105,7 @@ def _record_loop(
     ws_loop: asyncio.AbstractEventLoop,
     stop_event: threading.Event,
 ):
-    """Wake Word → VAD → WAV-Bytes → WebSocket."""
+    """Wake Word → VAD → WAV-Bytes → WebSocket. Pausiert wenn JARVIS spricht."""
     import audio
 
     in_conversation = False
@@ -62,6 +113,13 @@ def _record_loop(
     interrupt = threading.Event()
 
     while not stop_event.is_set():
+        # Warten bis JARVIS fertig ist
+        if _jarvis_speaking.is_set():
+            _jarvis_speaking.wait()
+            stop_event.wait(timeout=0.3)
+            in_conversation = True
+            silent_turns = 0
+
         if not in_conversation:
             if not MANUAL_MODE:
                 print("[client] Warte auf Wake Word…", flush=True)
@@ -78,6 +136,9 @@ def _record_loop(
                     break
             else:
                 print("[client] Bereit (kein Wake Word)…", flush=True)
+
+        if _jarvis_speaking.is_set():
+            continue
 
         print("[client] Höre zu…", flush=True)
         try:
@@ -193,6 +254,9 @@ async def _run():
                 if not TEXT_ONLY:
                     threading.Thread(
                         target=_record_loop, args=(ws, loop, stop_event), daemon=True
+                    ).start()
+                    threading.Thread(
+                        target=_interrupt_watcher, args=(stop_event,), daemon=True
                     ).start()
                 else:
                     print("[client] TEXT_ONLY-Modus — Eingabe über Tastatur.", flush=True)
