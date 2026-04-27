@@ -68,9 +68,11 @@ def _record_loop(
                 interrupt.clear()
                 try:
                     audio.listen_for_wake_word(interrupt=interrupt)
-                except Exception:
+                except Exception as e:
+                    print(f"[client] Wake Word Fehler: {e}", flush=True)
                     if stop_event.is_set():
                         break
+                    stop_event.wait(timeout=3.0)
                     continue
                 if stop_event.is_set():
                     break

@@ -66,6 +66,8 @@ Restart=on-failure
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
+Environment=PULSE_RUNTIME_PATH=/run/user/$(id -u)/pulse
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
 
 [Install]
 WantedBy=default.target
@@ -97,6 +99,7 @@ OnUnitActiveSec=30min
 WantedBy=timers.target
 EOF
 
+loginctl enable-linger "$USER"
 systemctl --user daemon-reload
 systemctl --user enable "$SERVICE_NAME"
 systemctl --user enable jarvis-update.timer
