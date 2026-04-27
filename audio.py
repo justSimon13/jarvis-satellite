@@ -266,7 +266,27 @@ def play_thinking_sound(stop_event: threading.Event):
             stream.write(tone)
 
 
+def _tone(freq: float, duration: float, volume: float = 0.3):
+    """Spielt einen kurzen Ton (non-blocking)."""
+    sr = 24000
+    t = np.linspace(0, duration, int(sr * duration), endpoint=False)
+    wave = (np.sin(2 * np.pi * freq * t) * volume * 32767).astype(np.int16)
+    def _play():
+        try:
+            with sd.OutputStream(samplerate=sr, channels=1, dtype="int16") as s:
+                s.write(wave)
+        except Exception:
+            pass
+    threading.Thread(target=_play, daemon=True).start()
+
+
 def _beep():
-    if sys.platform == "darwin":
-        subprocess.Popen(["afplay", "/System/Library/Sounds/Ping.aiff"])
-    # kein Beep auf Linux — kein Blocker
+    """Kurzer Ton: Wake Word erkannt."""
+    _tone(880, 0.12)
+
+
+def beep_ready():
+    """Zwei aufsteigende Töne: Client verbunden."""
+    _tone(660, 0.1)
+    import time; time.sleep(0.12)
+    _tone(880, 0.15)

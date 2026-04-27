@@ -243,6 +243,11 @@ async def _run():
         try:
             async with websockets.connect(JARVIS_SERVER, ping_interval=20) as ws:
                 print("[client] Verbunden!", flush=True)
+                try:
+                    import audio as _a
+                    _a.beep_ready()
+                except Exception:
+                    pass
                 loop = asyncio.get_event_loop()
 
                 audio_queue: queue.Queue = queue.Queue()
