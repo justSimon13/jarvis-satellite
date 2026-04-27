@@ -14,6 +14,7 @@ import asyncio
 import json
 import os
 import queue
+import sys
 import threading
 
 import numpy as np
@@ -26,6 +27,7 @@ import protocol as P
 
 JARVIS_SERVER = os.getenv("JARVIS_SERVER", "")
 MANUAL_MODE = os.getenv("MANUAL_MODE", "false").lower() == "true"
+TEXT_ONLY = os.getenv("TEXT_ONLY", "false").lower() == "true"
 AUDIO_INPUT_DEVICE = os.getenv("AUDIO_INPUT_DEVICE")
 
 
@@ -186,9 +188,12 @@ async def _run():
                 threading.Thread(
                     target=_play_loop, args=(audio_queue,), daemon=True
                 ).start()
-                threading.Thread(
-                    target=_record_loop, args=(ws, loop, stop_event), daemon=True
-                ).start()
+                if not TEXT_ONLY:
+                    threading.Thread(
+                        target=_record_loop, args=(ws, loop, stop_event), daemon=True
+                    ).start()
+                else:
+                    print("[client] TEXT_ONLY-Modus — Eingabe über Tastatur.", flush=True)
 
                 try:
                     await asyncio.gather(
