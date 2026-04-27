@@ -253,6 +253,9 @@ async def _run():
                 audio_queue: queue.Queue = queue.Queue()
                 stop_event = threading.Event()
 
+                # Startup-Greeting abwarten bevor Mic öffnet
+                _jarvis_speaking.set()
+
                 threading.Thread(
                     target=_play_loop, args=(audio_queue,), daemon=True
                 ).start()
