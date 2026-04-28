@@ -9,6 +9,7 @@ import numpy as np
 
 _PCM_RATE = 24000
 _active: dict[str, dict] = {}  # alarm_id → entry
+_ringing: set[str] = set()     # alarm_ids die gerade beepen
 _lock = threading.Lock()
 
 
@@ -54,9 +55,10 @@ def schedule(alarm_id: str, hour: int, minute: int, label: str,
 def _fire(alarm_id: str) -> None:
     with _lock:
         entry = _active.get(alarm_id)
-    if not entry:
-        return
-    entry["stop"].clear()
+        if not entry:
+            return
+        entry["stop"].clear()
+        _ringing.add(alarm_id)
     print(f"[alarm] Wecker klingelt: {entry['label']!r}", flush=True)
     threading.Thread(target=_beep_loop, args=[alarm_id], daemon=True).start()
 
@@ -86,12 +88,14 @@ def snooze(alarm_id: str | None = None, minutes: int = 9) -> bool:
         if alarm_id:
             aid = alarm_id
         else:
-            aid = next(iter(_active), None)
+            # bevorzuge klingelnden Alarm, sonst nächsten geplanten
+            aid = next(iter(_ringing), None) or next(iter(_active), None)
         entry = _active.get(aid) if aid else None
         if not entry:
             return False
 
         entry["stop"].set()
+        _ringing.discard(aid)
         entry["snooze_count"] += 1
         count = entry["snooze_count"]
         max_s = entry["max_snooze"]
@@ -130,4 +134,6 @@ def dismiss(alarm_id: str | None = None) -> bool:
             if t:
                 t.cancel()
             print(f"[alarm] Alarm gestoppt: {entry['label']!r}", flush=True)
+    with _lock:
+        _ringing.difference_update(entries.keys())
     return dismissed
