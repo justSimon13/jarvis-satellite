@@ -114,6 +114,13 @@ def _record_loop(
     silent_turns = 0
     interrupt = threading.Event()
 
+    def _speaking_watcher():
+        while not stop_event.is_set():
+            _jarvis_speaking.wait(timeout=0.1)
+            if _jarvis_speaking.is_set():
+                interrupt.set()
+    threading.Thread(target=_speaking_watcher, daemon=True).start()
+
     while not stop_event.is_set():
         # Warten bis JARVIS fertig ist
         if _jarvis_speaking.is_set():
@@ -142,6 +149,7 @@ def _record_loop(
         if _jarvis_speaking.is_set():
             continue
 
+        interrupt.clear()
         print("[client] Höre zu…", flush=True)
         try:
             wav_path = audio.record_with_vad(interrupt=interrupt)
