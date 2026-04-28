@@ -25,8 +25,8 @@ def _input_channels() -> int:
         return 1
 
 
-_INPUT_BLACKLIST = ("iphone", "ipad", "teams", "eqmac")
-_INPUT_PREFER = ("macbook", "mikrofon", "microphone", "kopfhörer", "headphone")
+_INPUT_BLACKLIST = ("iphone", "ipad", "teams", "eqmac", "monitor")
+_INPUT_PREFER = ("uacdemo", "mikrofon", "microphone", "pulse", "default", "kopfhörer", "headphone", "macbook")
 
 
 def _rank_input_device(name: str) -> int:
@@ -57,12 +57,14 @@ def _open_input_stream(samplerate: int, blocksize: int, callback) -> sd.InputStr
     for device in candidates:
         try:
             dev_info = sd.query_devices(device)
+            ch = max(1, min(2, int(dev_info.get("max_input_channels", 1))))
         except Exception:
             dev_info = {}
+            ch = 1
         try:
             stream = sd.InputStream(
                 samplerate=samplerate,
-                channels=1,
+                channels=ch,
                 dtype="float32",
                 blocksize=blocksize,
                 callback=callback,
