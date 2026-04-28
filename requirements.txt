@@ -1,9 +1,7 @@
 numpy
 scipy
 sounddevice
-torch
 openwakeword
-silero-vad
 python-dotenv
 websockets>=12.0
 yt-dlp

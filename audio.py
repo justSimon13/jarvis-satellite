@@ -87,26 +87,15 @@ def _open_input_stream(samplerate: int, blocksize: int, callback) -> sd.InputStr
     raise sd.PortAudioError("InputStream: kein Input-Gerät funktioniert")
 
 SAMPLE_RATE = 16000
-VAD_BLOCKSIZE = 512           # Silero VAD benötigt 512 samples @ 16kHz
-VAD_MAX_SECONDS = 30          # Maximale Aufnahmedauer
+VAD_BLOCKSIZE = 512
+VAD_MAX_SECONDS = 30
 
-# Silero VAD: Schwelle + Stille-Dauer (viel kürzer möglich da neural)
-_SILERO_THRESHOLD = 0.5       # Sprach-Wahrscheinlichkeit ab der als Sprache gilt
-_SILENCE_MS = 1500            # ms Stille bis VAD "end" feuert — Engine akkumuliert danach weiter
+_RMS_SPEECH   = 0.012  # Energie-Schwelle ab der als Sprache gilt
+_SPEECH_ONSET = 3      # Aufeinanderfolgende laute Frames um Sprache zu bestätigen
+_SILENCE_FRAMES = 47   # ~1.5s Stille bei 16kHz/512 (512/16000*1000 ≈ 32ms/Frame)
 
-_silero_model = None
-_silero_lock = threading.Lock()
 _oww_model = None
 _oww_lock = threading.Lock()
-
-
-def _get_silero():
-    global _silero_model
-    with _silero_lock:
-        if _silero_model is None:
-            from silero_vad import load_silero_vad, VADIterator  # noqa
-            _silero_model = load_silero_vad()
-    return _silero_model
 
 
 def _get_oww():
@@ -162,46 +151,28 @@ def listen_for_wake_word(interrupt: threading.Event | None = None):
 
 
 def record_with_vad(interrupt: threading.Event | None = None) -> str:
-    """Nimmt auf und stoppt via Silero VAD bei Redepause. interrupt bricht sofort ab."""
-    import torch
-    from silero_vad import VADIterator
-
-    model = _get_silero()
-    vad = VADIterator(
-        model,
-        sampling_rate=SAMPLE_RATE,
-        threshold=_SILERO_THRESHOLD,
-        min_silence_duration_ms=_SILENCE_MS,
-    )
-
+    """Nimmt auf und stoppt via RMS-VAD bei Redepause. Kein torch nötig."""
     frames = []
     stop_event = threading.Event()
-    pcm_q: queue.Queue = queue.Queue(maxsize=200)
+    speech_count = 0
+    silence_count = 0
+    speaking_started = False
 
-    # Callback läuft im PortAudio-Realtime-Thread — nur Daten queuen, kein PyTorch hier.
     def audio_callback(indata, frame_count, time_info, status):
-        try:
-            pcm_q.put_nowait(indata[:, 0].copy())
-        except queue.Full:
-            pass
-
-    def vad_worker():
-        speaking_started = False
-        while not stop_event.is_set():
-            try:
-                chunk = pcm_q.get(timeout=0.1)
-                frames.append(chunk)
-                result = vad(torch.from_numpy(chunk))
-                if result is not None:
-                    if "start" in result:
-                        speaking_started = True
-                    elif "end" in result and speaking_started:
-                        stop_event.set()
-            except queue.Empty:
-                pass
-
-    vad_thread = threading.Thread(target=vad_worker, daemon=True)
-    vad_thread.start()
+        nonlocal speech_count, silence_count, speaking_started
+        chunk = indata[:, 0].copy()
+        frames.append(chunk)
+        rms = float(np.sqrt(np.mean(chunk ** 2)))
+        if rms > _RMS_SPEECH:
+            speech_count += 1
+            silence_count = 0
+            if speech_count >= _SPEECH_ONSET:
+                speaking_started = True
+        else:
+            silence_count += 1
+            speech_count = 0
+            if speaking_started and silence_count >= _SILENCE_FRAMES:
+                stop_event.set()
 
     deadline = time.monotonic() + VAD_MAX_SECONDS
     with _open_input_stream(SAMPLE_RATE, VAD_BLOCKSIZE, audio_callback):
@@ -214,10 +185,7 @@ def record_with_vad(interrupt: threading.Event | None = None) -> str:
                 break
             stop_event.wait(timeout=0.2)
 
-    vad_thread.join(timeout=1.0)
-    vad.reset_states()
-
-    if not frames:
+    if not frames or not speaking_started:
         return ""
 
     audio = np.concatenate(frames, axis=0)
