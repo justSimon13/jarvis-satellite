@@ -32,6 +32,7 @@ MANUAL_MODE = os.getenv("MANUAL_MODE", "false").lower() == "true"
 TEXT_ONLY = os.getenv("TEXT_ONLY", "false").lower() == "true"
 AUDIO_INPUT_DEVICE = os.getenv("AUDIO_INPUT_DEVICE")
 AUDIO_OUTPUT_DEVICE = int(os.getenv("AUDIO_OUTPUT_DEVICE")) if os.getenv("AUDIO_OUTPUT_DEVICE") else None
+CLIENT_NAME = os.getenv("CLIENT_NAME", "")
 
 # Gesetzt während JARVIS spricht — Record-Loop pausiert dann
 _jarvis_speaking = threading.Event()
@@ -275,6 +276,8 @@ async def _run():
                     _a.beep_ready()
                 except Exception:
                     pass
+                if CLIENT_NAME:
+                    await ws.send(json.dumps({"type": P.CLIENT_HELLO, "name": CLIENT_NAME}))
                 loop = asyncio.get_running_loop()
 
                 audio_queue: queue.Queue = queue.Queue()
