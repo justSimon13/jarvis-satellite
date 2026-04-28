@@ -114,6 +114,9 @@ def _record_loop(
     in_conversation = False
     silent_turns = 0
     interrupt = threading.Event()
+    last_response_time = time.monotonic()
+    prev_speaking = False
+    CONVO_TIMEOUT = 40  # Sekunden ohne JARVIS-Antwort → zurück zum Wake Word
 
     def _speaking_watcher():
         while not stop_event.is_set():
@@ -123,12 +126,23 @@ def _record_loop(
     threading.Thread(target=_speaking_watcher, daemon=True).start()
 
     while not stop_event.is_set():
-        # Warten bis JARVIS fertig ist
-        if _jarvis_speaking.is_set():
-            _jarvis_speaking.wait()
-            stop_event.wait(timeout=0.3)
+        # Transition JARVIS fertig → Zeitstempel merken
+        cur_speaking = _jarvis_speaking.is_set()
+        if prev_speaking and not cur_speaking:
+            last_response_time = time.monotonic()
+        prev_speaking = cur_speaking
+
+        # Conversation-Timeout: kein JARVIS-Response seit CONVO_TIMEOUT → Wake Word
+        if in_conversation and not cur_speaking and time.monotonic() - last_response_time > CONVO_TIMEOUT:
+            print("[client] Kein Response — zurück zum Wake Word.", flush=True)
+            in_conversation = False
+            silent_turns = 0
+
+        if cur_speaking:
+            stop_event.wait(timeout=0.2)
             in_conversation = True
             silent_turns = 0
+            continue
 
         if not in_conversation:
             if not MANUAL_MODE:
@@ -137,6 +151,7 @@ def _record_loop(
                 try:
                     audio.listen_for_wake_word(interrupt=interrupt)
                     print("[client] Wake Word erkannt!", flush=True)
+                    last_response_time = time.monotonic()
                 except Exception as e:
                     print(f"[client] Wake Word Fehler: {e}", flush=True)
                     if stop_event.is_set():
