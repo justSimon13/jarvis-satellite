@@ -136,6 +136,7 @@ def _record_loop(
                 interrupt.clear()
                 try:
                     audio.listen_for_wake_word(interrupt=interrupt)
+                    print("[client] Wake Word erkannt!", flush=True)
                 except Exception as e:
                     print(f"[client] Wake Word Fehler: {e}", flush=True)
                     if stop_event.is_set():
@@ -181,11 +182,11 @@ def _record_loop(
 # ── Server-Events ausgeben ────────────────────────────────────────────────────
 
 _STATE_LABELS = {
-    "idle": "● Bereit",
-    "listening": "◉ Höre…",
-    "thinking": "◈ Denke…",
-    "speaking": "◆ Spreche…",
-    "tool_running": "◇ Tool läuft…",
+    "idle": "Bereit",
+    "listening": "Hoere...",
+    "thinking": "Denke...",
+    "speaking": "Spreche...",
+    "tool_running": "Tool laeuft...",
 }
 
 
