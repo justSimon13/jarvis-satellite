@@ -176,25 +176,18 @@ def record_with_vad(interrupt: threading.Event | None = None) -> str:
 
     def vad_worker():
         speaking_started = False
-        n = 0
         while not stop_event.is_set():
             try:
                 chunk = pcm_q.get(timeout=0.1)
                 frames.append(chunk)
-                n += 1
                 result = vad(torch.from_numpy(chunk))
-                if result is not None:
-                    print(f"[vad] chunk={n} result={result} speaking_started={speaking_started}", flush=True)
                 if result is not None:
                     if "start" in result:
                         speaking_started = True
-                        print("[vad] Sprache erkannt — nehme auf…", flush=True)
                     elif "end" in result and speaking_started:
-                        print(f"[vad] Stille erkannt nach {n} chunks — stoppe.", flush=True)
                         stop_event.set()
             except queue.Empty:
                 pass
-        print(f"[vad] Worker beendet. frames={len(frames)}", flush=True)
 
     vad_thread = threading.Thread(target=vad_worker, daemon=True)
     vad_thread.start()

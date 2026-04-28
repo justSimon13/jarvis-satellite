@@ -48,6 +48,7 @@ def _play_loop(audio_queue: queue.Queue):
     while True:
         chunk = audio_queue.get()
         if chunk is None:
+            _jarvis_speaking.clear()
             break
 
         _interrupt_playback.clear()
@@ -77,7 +78,7 @@ def _play_loop(audio_queue: queue.Queue):
                             break
                     print("[client] Wiedergabe unterbrochen.", flush=True)
         finally:
-            time.sleep(0.3)
+            time.sleep(0.8)
             _jarvis_speaking.clear()
 
 
