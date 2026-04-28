@@ -57,19 +57,18 @@ def _open_input_stream(samplerate: int, blocksize: int, callback) -> sd.InputStr
     for device in candidates:
         try:
             dev_info = sd.query_devices(device)
-            ch = max(1, min(2, int(dev_info.get("max_input_channels", 1))))
         except Exception:
-            ch = 1
+            dev_info = {}
         try:
             stream = sd.InputStream(
                 samplerate=samplerate,
-                channels=ch,
+                channels=1,
                 dtype="float32",
                 blocksize=blocksize,
                 callback=callback,
                 device=device,
             )
-            print(f"[audio] InputStream: [{device}] {dev_info.get('name', '?')!r} ch={ch}", flush=True)
+            print(f"[audio] InputStream: [{device}] {dev_info.get('name', '?')!r}", flush=True)
             return stream
         except sd.PortAudioError as e:
             print(f"[audio] [{device}] fehlgeschlagen: {e}", flush=True)
