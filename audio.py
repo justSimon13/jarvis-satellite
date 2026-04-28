@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import numpy as np
 import sounddevice as sd
 import scipy.io.wavfile as wav
@@ -193,9 +194,13 @@ def record_with_vad(interrupt: threading.Event | None = None) -> str:
     vad_thread = threading.Thread(target=vad_worker, daemon=True)
     vad_thread.start()
 
+    deadline = time.monotonic() + VAD_MAX_SECONDS
     with _open_input_stream(SAMPLE_RATE, VAD_BLOCKSIZE, audio_callback):
         while not stop_event.is_set():
             if interrupt and interrupt.is_set():
+                stop_event.set()
+                break
+            if time.monotonic() >= deadline:
                 stop_event.set()
                 break
             stop_event.wait(timeout=0.2)
