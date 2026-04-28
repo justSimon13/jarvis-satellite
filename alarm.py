@@ -26,7 +26,7 @@ def _beep_pcm() -> np.ndarray:
 
 def schedule(alarm_id: str, hour: int, minute: int, label: str,
              snooze_minutes: int = 9, max_snooze: int = 2,
-             audio_output_device=None) -> None:
+             audio_output_device=None, song: str | None = None) -> None:
     now = datetime.datetime.now()
     target_dt = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if target_dt <= now:
@@ -44,6 +44,7 @@ def schedule(alarm_id: str, hour: int, minute: int, label: str,
             "max_snooze": max_snooze,
             "snooze_count": 0,
             "device": audio_output_device,
+            "song": song,
             "stop": stop,
             "timer": timer,
         }
@@ -60,7 +61,13 @@ def _fire(alarm_id: str) -> None:
         entry["stop"].clear()
         _ringing.add(alarm_id)
     print(f"[alarm] Wecker klingelt: {entry['label']!r}", flush=True)
-    threading.Thread(target=_beep_loop, args=[alarm_id], daemon=True).start()
+    if entry.get("song"):
+        import player
+        player.play(entry["song"], volume=80)
+        # Wacht bis stop gesetzt wird (für Snooze/Dismiss)
+        threading.Thread(target=_song_watch, args=[alarm_id], daemon=True).start()
+    else:
+        threading.Thread(target=_beep_loop, args=[alarm_id], daemon=True).start()
 
 
 def _beep_loop(alarm_id: str) -> None:
@@ -81,6 +88,17 @@ def _beep_loop(alarm_id: str) -> None:
         except Exception as e:
             print(f"[alarm] Beep-Fehler: {e}", flush=True)
         stop.wait(timeout=0.9)
+
+
+def _song_watch(alarm_id: str) -> None:
+    """Wartet bis stop gesetzt wird und stoppt dann den Player."""
+    with _lock:
+        entry = _active.get(alarm_id)
+    if not entry:
+        return
+    entry["stop"].wait()
+    import player
+    player.stop()
 
 
 def snooze(alarm_id: str | None = None, minutes: int = 9) -> bool:

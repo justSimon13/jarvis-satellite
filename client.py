@@ -235,6 +235,7 @@ def _handle_event(data: dict):
             snooze_minutes=data.get("snooze_minutes", 9),
             max_snooze=data.get("max_snooze", 2),
             audio_output_device=AUDIO_OUTPUT_DEVICE,
+            song=data.get("song") or None,
         )
     elif t == P.SNOOZE_ALARM:
         import alarm as _alarm
@@ -242,6 +243,12 @@ def _handle_event(data: dict):
     elif t == P.CANCEL_ALARM:
         import alarm as _alarm
         _alarm.dismiss(data.get("alarm_id"))
+    elif t == P.PLAY_MUSIC:
+        import player
+        player.play(data["song"], data.get("volume", 70))
+    elif t == P.STOP_MUSIC:
+        import player
+        player.stop()
 
 
 # ── Empfangs-Loop ─────────────────────────────────────────────────────────────
