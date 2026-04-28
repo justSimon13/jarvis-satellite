@@ -1,3 +1,4 @@
+import ctypes
 import queue
 import subprocess
 import sys
@@ -8,6 +9,14 @@ import numpy as np
 import sounddevice as sd
 import scipy.io.wavfile as wav
 import config
+
+# ALSA-Fehlermeldungen (C-Level stderr) unterdrücken — harmlose Fallback-Versuche
+try:
+    _ALSA_ERROR_FUNC = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p)
+    _alsa = ctypes.cdll.LoadLibrary("libasound.so.2")
+    _alsa.snd_lib_error_set_handler(_ALSA_ERROR_FUNC(lambda *_: None))
+except Exception:
+    pass
 
 def _input_device():
     v = config.AUDIO_INPUT_DEVICE
