@@ -226,7 +226,7 @@ async def _recv_loop(ws, audio_queue: queue.Queue):
 
 async def _stdin_loop(ws):
     """Liest stdin-Zeilen und schickt sie als text_input an den Server."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     while True:
         try:
             line = await loop.run_in_executor(None, sys.stdin.readline)
@@ -260,7 +260,7 @@ async def _run():
                     _a.beep_ready()
                 except Exception:
                     pass
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
 
                 audio_queue: queue.Queue = queue.Queue()
                 stop_event = threading.Event()
