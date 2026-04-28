@@ -31,6 +31,7 @@ JARVIS_SERVER = os.getenv("JARVIS_SERVER", "")
 MANUAL_MODE = os.getenv("MANUAL_MODE", "false").lower() == "true"
 TEXT_ONLY = os.getenv("TEXT_ONLY", "false").lower() == "true"
 AUDIO_INPUT_DEVICE = os.getenv("AUDIO_INPUT_DEVICE")
+AUDIO_OUTPUT_DEVICE = int(os.getenv("AUDIO_OUTPUT_DEVICE")) if os.getenv("AUDIO_OUTPUT_DEVICE") else None
 
 # Gesetzt während JARVIS spricht — Record-Loop pausiert dann
 _jarvis_speaking = threading.Event()
@@ -56,6 +57,7 @@ def _play_loop(audio_queue: queue.Queue):
                 samplerate=P.PCM_SAMPLERATE,
                 channels=P.PCM_CHANNELS,
                 dtype=P.PCM_DTYPE,
+                device=AUDIO_OUTPUT_DEVICE,
             ) as stream:
                 stream.write(np.frombuffer(chunk, dtype=np.int16))
                 while not _interrupt_playback.is_set():
