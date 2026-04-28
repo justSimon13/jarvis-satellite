@@ -225,6 +225,23 @@ def _handle_event(data: dict):
         print(f"\n[Tool]    {data.get('name', '')}", flush=True)
     elif t == P.ERROR:
         print(f"\n[Fehler]  {data.get('message', '')}", flush=True)
+    elif t == P.SET_ALARM:
+        import alarm as _alarm
+        _alarm.schedule(
+            alarm_id=data["alarm_id"],
+            hour=data["hour"],
+            minute=data["minute"],
+            label=data.get("label", "Wecker"),
+            snooze_minutes=data.get("snooze_minutes", 9),
+            max_snooze=data.get("max_snooze", 2),
+            audio_output_device=AUDIO_OUTPUT_DEVICE,
+        )
+    elif t == P.SNOOZE_ALARM:
+        import alarm as _alarm
+        _alarm.snooze(data.get("alarm_id"), data.get("minutes", 9))
+    elif t == P.CANCEL_ALARM:
+        import alarm as _alarm
+        _alarm.dismiss(data.get("alarm_id"))
 
 
 # ── Empfangs-Loop ─────────────────────────────────────────────────────────────
