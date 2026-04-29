@@ -1,8 +1,11 @@
 """
 JARVIS Satellite Alarm — läuft lokal auf dem Satellite-Device.
 Unabhängig vom Server: klingelt auch wenn die WebSocket-Verbindung weg ist.
+Wecker werden in alarm_state.json persistiert und beim Start wiederhergestellt.
 """
 import datetime
+import json
+import os
 import threading
 
 import numpy as np
@@ -11,6 +14,83 @@ _PCM_RATE = 24000
 _active: dict[str, dict] = {}  # alarm_id → entry
 _ringing: set[str] = set()     # alarm_ids die gerade beepen
 _lock = threading.Lock()
+
+_STATE_FILE = os.path.join(os.path.dirname(__file__), "alarm_state.json")
+
+
+def _save_state() -> None:
+    data = {}
+    with _lock:
+        for aid, entry in _active.items():
+            data[aid] = {
+                "label": entry["label"],
+                "fire_ts": entry["fire_ts"],
+                "snooze_minutes": entry["snooze_minutes"],
+                "max_snooze": entry["max_snooze"],
+                "snooze_count": entry["snooze_count"],
+                "device": entry["device"],
+                "song": entry["song"],
+            }
+    try:
+        with open(_STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+    except Exception as e:
+        print(f"[alarm] State speichern fehlgeschlagen: {e}", flush=True)
+
+
+def _load_state() -> None:
+    if not os.path.exists(_STATE_FILE):
+        return
+    try:
+        with open(_STATE_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return
+
+    now = datetime.datetime.now().timestamp()
+    restored = 0
+    for aid, entry in data.items():
+        fire_ts = entry.get("fire_ts", 0)
+        if fire_ts <= now:
+            # Zeit bereits vorbei — auf nächsten Tag verschieben
+            fire_dt = datetime.datetime.fromtimestamp(fire_ts)
+            fire_dt += datetime.timedelta(days=1)
+            fire_ts = fire_dt.timestamp()
+        seconds = fire_ts - now
+        _schedule_timer(
+            alarm_id=aid,
+            fire_ts=fire_ts,
+            seconds=seconds,
+            label=entry["label"],
+            snooze_minutes=entry.get("snooze_minutes", 9),
+            max_snooze=entry.get("max_snooze", 2),
+            snooze_count=entry.get("snooze_count", 0),
+            audio_output_device=entry.get("device"),
+            song=entry.get("song"),
+        )
+        restored += 1
+    if restored:
+        print(f"[alarm] {restored} Wecker aus alarm_state.json wiederhergestellt.", flush=True)
+
+
+def _schedule_timer(alarm_id, fire_ts, seconds, label, snooze_minutes, max_snooze,
+                    snooze_count=0, audio_output_device=None, song=None):
+    stop = threading.Event()
+    timer = threading.Timer(seconds, _fire, args=[alarm_id])
+    timer.daemon = True
+    with _lock:
+        _active[alarm_id] = {
+            "label": label,
+            "fire_ts": fire_ts,
+            "snooze_minutes": snooze_minutes,
+            "max_snooze": max_snooze,
+            "snooze_count": snooze_count,
+            "device": audio_output_device,
+            "song": song,
+            "stop": stop,
+            "timer": timer,
+        }
+    timer.start()
 
 
 def _beep_pcm() -> np.ndarray:
@@ -32,24 +112,11 @@ def schedule(alarm_id: str, hour: int, minute: int, label: str,
     if target_dt <= now:
         target_dt += datetime.timedelta(days=1)
     seconds = (target_dt - now).total_seconds()
+    fire_ts = target_dt.timestamp()
 
-    stop = threading.Event()
-    timer = threading.Timer(seconds, _fire, args=[alarm_id])
-    timer.daemon = True
-
-    with _lock:
-        _active[alarm_id] = {
-            "label": label,
-            "snooze_minutes": snooze_minutes,
-            "max_snooze": max_snooze,
-            "snooze_count": 0,
-            "device": audio_output_device,
-            "song": song,
-            "stop": stop,
-            "timer": timer,
-        }
-
-    timer.start()
+    _schedule_timer(alarm_id, fire_ts, seconds, label, snooze_minutes, max_snooze,
+                    audio_output_device=audio_output_device, song=song)
+    _save_state()
     print(f"[alarm] Wecker gesetzt: {label!r} um {target_dt.strftime('%H:%M')}", flush=True)
 
 
@@ -64,7 +131,6 @@ def _fire(alarm_id: str) -> None:
     if entry.get("song"):
         import player
         player.play(entry["song"], volume=80)
-        # Wacht bis stop gesetzt wird (für Snooze/Dismiss)
         threading.Thread(target=_song_watch, args=[alarm_id], daemon=True).start()
     else:
         threading.Thread(target=_beep_loop, args=[alarm_id], daemon=True).start()
@@ -91,7 +157,6 @@ def _beep_loop(alarm_id: str) -> None:
 
 
 def _song_watch(alarm_id: str) -> None:
-    """Wartet bis stop gesetzt wird und stoppt dann den Player."""
     with _lock:
         entry = _active.get(alarm_id)
     if not entry:
@@ -106,7 +171,6 @@ def snooze(alarm_id: str | None = None, minutes: int = 9) -> bool:
         if alarm_id:
             aid = alarm_id
         else:
-            # bevorzuge klingelnden Alarm, sonst nächsten geplanten
             aid = next(iter(_ringing), None) or next(iter(_active), None)
         entry = _active.get(aid) if aid else None
         if not entry:
@@ -121,11 +185,15 @@ def snooze(alarm_id: str | None = None, minutes: int = 9) -> bool:
         if count > max_s:
             _active.pop(aid, None)
             print("[alarm] Max. Snooze erreicht — Alarm endgültig gestoppt.", flush=True)
+            _save_state()
             return False
 
         entry["stop"] = threading.Event()
+        fire_ts = (datetime.datetime.now() + datetime.timedelta(minutes=minutes)).timestamp()
+        entry["fire_ts"] = fire_ts
 
     print(f"[alarm] Snooze {minutes} min ({count}/{max_s})", flush=True)
+    _save_state()
     t = threading.Timer(minutes * 60, _fire, args=[aid])
     t.daemon = True
     t.start()
@@ -154,4 +222,9 @@ def dismiss(alarm_id: str | None = None) -> bool:
             print(f"[alarm] Alarm gestoppt: {entry['label']!r}", flush=True)
     with _lock:
         _ringing.difference_update(entries.keys())
+    _save_state()
     return dismissed
+
+
+# Beim Import: gespeicherte Wecker wiederherstellen
+_load_state()
