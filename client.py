@@ -51,13 +51,15 @@ def _ensure_bt_connected() -> None:
             capture_output=True, text=True, timeout=3
         )
         if "Connected: yes" not in result.stdout:
+            print(f"[bt] Box getrennt — verbinde {BT_SPEAKER_MAC}…", flush=True)
             subprocess.run(
                 ["bluetoothctl", "connect", BT_SPEAKER_MAC],
                 capture_output=True, timeout=5
             )
-            time.sleep(1.5)
-    except Exception:
-        pass
+            time.sleep(2.0)
+            print("[bt] Reconnect abgeschlossen.", flush=True)
+    except Exception as e:
+        print(f"[bt] Fehler: {e}", flush=True)
 
 
 # ── Audioausgabe ──────────────────────────────────────────────────────────────
