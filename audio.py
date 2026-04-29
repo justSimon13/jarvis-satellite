@@ -11,10 +11,13 @@ import scipy.io.wavfile as wav
 import config
 
 # ALSA-Fehlermeldungen (C-Level stderr) unterdrücken — harmlose Fallback-Versuche
+# _alsa_cb muss auf Modulebene gehalten werden — sonst GC → dangling pointer → SEGV
+_alsa_cb = None
 try:
     _ALSA_ERROR_FUNC = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p)
     _alsa = ctypes.cdll.LoadLibrary("libasound.so.2")
-    _alsa.snd_lib_error_set_handler(_ALSA_ERROR_FUNC(lambda *_: None))
+    _alsa_cb = _ALSA_ERROR_FUNC(lambda *_: None)
+    _alsa.snd_lib_error_set_handler(_alsa_cb)
 except Exception:
     pass
 
