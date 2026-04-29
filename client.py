@@ -117,8 +117,7 @@ def _interrupt_watcher(stop_event: threading.Event):
             continue
         try:
             interrupt = threading.Event()
-            audio.listen_for_wake_word(interrupt=interrupt)
-            if _jarvis_speaking.is_set():
+            if audio.listen_for_wake_word(interrupt=interrupt) and _jarvis_speaking.is_set():
                 _interrupt_playback.set()
                 print("[client] Wake Word erkannt — unterbreche JARVIS.", flush=True)
         except Exception:
@@ -173,9 +172,13 @@ def _record_loop(
                 print("[client] Warte auf Wake Word…", flush=True)
                 interrupt.clear()
                 try:
-                    audio.listen_for_wake_word(interrupt=interrupt)
+                    if not audio.listen_for_wake_word(interrupt=interrupt):
+                        if stop_event.is_set():
+                            break
+                        continue
                     print("[client] Wake Word erkannt!", flush=True)
                     audio.play_beep()
+                    time.sleep(0.3)
                     last_response_time = time.monotonic()
                 except Exception as e:
                     print(f"[client] Wake Word Fehler: {e}", flush=True)
@@ -330,7 +333,7 @@ async def _run():
 
     while True:
         try:
-            async with websockets.connect(JARVIS_SERVER, ping_interval=20) as ws:
+            async with websockets.connect(JARVIS_SERVER, ping_interval=20, ping_timeout=60) as ws:
                 print("[client] Verbunden!", flush=True)
                 try:
                     import audio as _a

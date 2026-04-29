@@ -120,12 +120,13 @@ def play_beep(freq: int = 880, duration: float = 0.12, volume: float = 0.4) -> N
         pass
 
 
-def listen_for_wake_word(interrupt: threading.Event | None = None):
-    """Blockiert bis 'Hey JARVIS' erkannt wird oder interrupt gesetzt wird."""
+def listen_for_wake_word(interrupt: threading.Event | None = None) -> bool:
+    """Blockiert bis 'Hey JARVIS' erkannt oder interrupt gesetzt. Gibt True nur bei echter Erkennung zurück."""
     oww = _get_oww()
     oww.reset()  # State zwischen Sessions leeren
 
-    detected = threading.Event()
+    real_detection = threading.Event()
+    stop_stream = threading.Event()
     pcm_q: queue.Queue = queue.Queue(maxsize=20)
     chunk_size = 1280  # 80ms @ 16kHz
 
@@ -138,12 +139,13 @@ def listen_for_wake_word(interrupt: threading.Event | None = None):
             pass
 
     def inference_worker():
-        while not detected.is_set():
+        while not stop_stream.is_set():
             try:
                 pcm = pcm_q.get(timeout=0.1)
                 scores = oww.predict(pcm)
                 if scores.get("hey_jarvis", 0) >= 0.35:
-                    detected.set()
+                    real_detection.set()
+                    stop_stream.set()
             except queue.Empty:
                 pass
 
@@ -151,16 +153,14 @@ def listen_for_wake_word(interrupt: threading.Event | None = None):
     infer_thread.start()
 
     with _open_input_stream(SAMPLE_RATE, chunk_size, audio_callback):
-        while not detected.is_set():
+        while not stop_stream.is_set():
             if interrupt and interrupt.is_set():
-                detected.set()
+                stop_stream.set()
                 break
-            detected.wait(timeout=0.2)
+            stop_stream.wait(timeout=0.2)
 
     infer_thread.join(timeout=1.0)
-    _beep()
-    import time
-    time.sleep(0.3)
+    return real_detection.is_set()
 
 
 def record_with_vad(interrupt: threading.Event | None = None) -> str:
