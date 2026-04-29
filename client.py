@@ -302,6 +302,11 @@ async def _run():
                     pass
                 if CLIENT_NAME:
                     await ws.send(json.dumps({"type": P.CLIENT_HELLO, "name": CLIENT_NAME}))
+                try:
+                    import alarm as _alarm
+                    await ws.send(json.dumps({"type": P.ALARM_SYNC, "alarms": _alarm.get_list()}))
+                except Exception:
+                    pass
                 loop = asyncio.get_running_loop()
 
                 audio_queue: queue.Queue = queue.Queue()

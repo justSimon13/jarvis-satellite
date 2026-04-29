@@ -226,5 +226,21 @@ def dismiss(alarm_id: str | None = None) -> bool:
     return dismissed
 
 
+def get_list() -> list[dict]:
+    """Gibt alle aktiven Wecker als serialisierbare Liste zurück."""
+    with _lock:
+        return [
+            {
+                "alarm_id": aid,
+                "label": e["label"],
+                "hour": int(datetime.datetime.fromtimestamp(e["fire_ts"]).hour) if "fire_ts" in e else 0,
+                "minute": int(datetime.datetime.fromtimestamp(e["fire_ts"]).minute) if "fire_ts" in e else 0,
+                "fires_at": datetime.datetime.fromtimestamp(e["fire_ts"]).strftime("%H:%M") if "fire_ts" in e else "?",
+                "song": e.get("song"),
+            }
+            for aid, e in _active.items()
+        ]
+
+
 # Beim Import: gespeicherte Wecker wiederherstellen
 _load_state()
