@@ -253,6 +253,19 @@ def _handle_event(data: dict):
 
 # ── Empfangs-Loop ─────────────────────────────────────────────────────────────
 
+async def _alarm_event_loop(ws):
+    """Leitet alarm.event_queue Events an den Server weiter."""
+    import alarm as _alarm
+    while True:
+        try:
+            event = _alarm.event_queue.get_nowait()
+            await ws.send(json.dumps(event))
+        except queue.Empty:
+            await asyncio.sleep(0.5)
+        except Exception:
+            await asyncio.sleep(1)
+
+
 async def _recv_loop(ws, audio_queue: queue.Queue):
     async for message in ws:
         if isinstance(message, bytes):
@@ -333,6 +346,7 @@ async def _run():
                     await asyncio.gather(
                         _recv_loop(ws, audio_queue),
                         _stdin_loop(ws),
+                        _alarm_event_loop(ws),
                     )
                 finally:
                     stop_event.set()

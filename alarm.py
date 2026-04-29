@@ -6,6 +6,7 @@ Wecker werden in alarm_state.json persistiert und beim Start wiederhergestellt.
 import datetime
 import json
 import os
+import queue
 import threading
 
 import numpy as np
@@ -16,6 +17,7 @@ _ringing: set[str] = set()     # alarm_ids die gerade beepen
 _lock = threading.Lock()
 
 _STATE_FILE = os.path.join(os.path.dirname(__file__), "alarm_state.json")
+event_queue: queue.Queue = queue.Queue()  # Events für client.py → Server
 
 
 def _save_state() -> None:
@@ -128,6 +130,7 @@ def _fire(alarm_id: str) -> None:
         entry["stop"].clear()
         _ringing.add(alarm_id)
     print(f"[alarm] Wecker klingelt: {entry['label']!r}", flush=True)
+    event_queue.put({"type": "alarm_ringing", "alarm_id": alarm_id, "label": entry["label"]})
     if entry.get("song"):
         import player
         player.play(entry["song"], volume=80)
@@ -220,6 +223,8 @@ def dismiss(alarm_id: str | None = None) -> bool:
             if t:
                 t.cancel()
             print(f"[alarm] Alarm gestoppt: {entry['label']!r}", flush=True)
+            event_queue.put({"type": "alarm_dismissed", "alarm_id": aid,
+                             "snooze_count": entry.get("snooze_count", 0)})
     with _lock:
         _ringing.difference_update(entries.keys())
     _save_state()
