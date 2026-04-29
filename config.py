@@ -18,6 +18,7 @@ EMAIL_SMTP_HOST = os.getenv("EMAIL_SMTP_HOST", "")
 EMAIL_SEND_ENABLED = os.getenv("EMAIL_SEND_ENABLED", "false").lower() == "true"
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")
 AUDIO_INPUT_DEVICE = os.getenv("AUDIO_INPUT_DEVICE")  # None = System-Default
+BT_SPEAKER_MAC = os.getenv("BT_SPEAKER_MAC", "")      # z.B. "90:F2:60:21:8D:95" — leer = deaktiviert
 WEATHER_CITY = os.getenv("WEATHER_CITY", "Stuttgart")
 JARVIS_SERVER = os.getenv("JARVIS_SERVER", "")  # z.B. "ws://100.x.x.x:8765" — leer = Standalone
 

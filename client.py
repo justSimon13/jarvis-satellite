@@ -33,11 +33,31 @@ TEXT_ONLY = os.getenv("TEXT_ONLY", "false").lower() == "true"
 AUDIO_INPUT_DEVICE = os.getenv("AUDIO_INPUT_DEVICE")
 AUDIO_OUTPUT_DEVICE = int(os.getenv("AUDIO_OUTPUT_DEVICE")) if os.getenv("AUDIO_OUTPUT_DEVICE") else None
 CLIENT_NAME = os.getenv("CLIENT_NAME", "")
+BT_SPEAKER_MAC = os.getenv("BT_SPEAKER_MAC", "")
 
 # Gesetzt während JARVIS spricht — Record-Loop pausiert dann
 _jarvis_speaking = threading.Event()
 # Gesetzt wenn JARVIS unterbrochen werden soll
 _interrupt_playback = threading.Event()
+
+
+def _ensure_bt_connected() -> None:
+    if not BT_SPEAKER_MAC:
+        return
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["bluetoothctl", "info", BT_SPEAKER_MAC],
+            capture_output=True, text=True, timeout=3
+        )
+        if "Connected: yes" not in result.stdout:
+            subprocess.run(
+                ["bluetoothctl", "connect", BT_SPEAKER_MAC],
+                capture_output=True, timeout=5
+            )
+            time.sleep(1.5)
+    except Exception:
+        pass
 
 
 # ── Audioausgabe ──────────────────────────────────────────────────────────────
@@ -54,6 +74,7 @@ def _play_loop(audio_queue: queue.Queue):
 
         _interrupt_playback.clear()
         _jarvis_speaking.set()
+        _ensure_bt_connected()
         try:
             with sd.OutputStream(
                 samplerate=P.PCM_SAMPLERATE,
