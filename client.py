@@ -173,6 +173,7 @@ def _record_loop(
                 try:
                     audio.listen_for_wake_word(interrupt=interrupt)
                     print("[client] Wake Word erkannt!", flush=True)
+                    audio.play_beep()
                     last_response_time = time.monotonic()
                 except Exception as e:
                     print(f"[client] Wake Word Fehler: {e}", flush=True)

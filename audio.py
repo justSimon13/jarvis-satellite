@@ -110,6 +110,16 @@ def _get_oww():
     return _oww_model
 
 
+def play_beep(freq: int = 880, duration: float = 0.12, volume: float = 0.4) -> None:
+    """Kurzer Bestätigungston — signalisiert dass JARVIS zugehört hat."""
+    try:
+        t = np.linspace(0, duration, int(sd.default.samplerate or 24000 * duration), False)
+        tone = (np.sin(2 * np.pi * freq * t) * volume * 32767).astype(np.int16)
+        sd.play(tone, samplerate=24000, blocking=False)
+    except Exception:
+        pass
+
+
 def listen_for_wake_word(interrupt: threading.Event | None = None):
     """Blockiert bis 'Hey JARVIS' erkannt wird oder interrupt gesetzt wird."""
     oww = _get_oww()
