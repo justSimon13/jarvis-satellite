@@ -94,7 +94,7 @@ VAD_BLOCKSIZE = 512
 VAD_MAX_SECONDS = 30
 VAD_WARMUP_FRAMES = 16  # ~0.5s bei 16kHz/512 — ignoriert Echo-Nachhall nach JARVIS-Antwort
 
-_RMS_SPEECH   = 0.018  # Energie-Schwelle ab der als Sprache gilt (höher = weniger Echo-Anfälligkeit)
+_RMS_SPEECH   = 0.012  # Energie-Schwelle ab der als Sprache gilt
 _SPEECH_ONSET = 3      # Aufeinanderfolgende laute Frames um Sprache zu bestätigen
 _SILENCE_FRAMES = 47   # ~1.5s Stille bei 16kHz/512 (512/16000*1000 ≈ 32ms/Frame)
 
