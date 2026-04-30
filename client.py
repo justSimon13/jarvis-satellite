@@ -84,6 +84,7 @@ def _play_loop(audio_queue: queue.Queue):
                 dtype=P.PCM_DTYPE,
                 device=AUDIO_OUTPUT_DEVICE,
             ) as stream:
+                print("[play] Stream geöffnet", flush=True)
                 stream.write(np.frombuffer(chunk, dtype=np.int16))
                 while not _interrupt_playback.is_set():
                     try:
@@ -92,6 +93,7 @@ def _play_loop(audio_queue: queue.Queue):
                             return
                         stream.write(np.frombuffer(chunk, dtype=np.int16))
                     except queue.Empty:
+                        print(f"[play] IDLE_TIMEOUT — Stream schließt", flush=True)
                         break
                 if _interrupt_playback.is_set():
                     # Queue leeren damit altes Audio nicht nachläuft
@@ -100,10 +102,11 @@ def _play_loop(audio_queue: queue.Queue):
                             audio_queue.get_nowait()
                         except queue.Empty:
                             break
-                    print("[client] Wiedergabe unterbrochen.", flush=True)
+                    print("[play] Wiedergabe unterbrochen.", flush=True)
         finally:
             time.sleep(0.8)
             _jarvis_speaking.clear()
+            print("[play] _jarvis_speaking gelöscht — Mikrofon freigegeben", flush=True)
 
 
 # ── Wake Word während Wiedergabe ──────────────────────────────────────────────
@@ -153,11 +156,12 @@ def _record_loop(
         cur_speaking = _jarvis_speaking.is_set()
         if prev_speaking and not cur_speaking:
             last_response_time = time.monotonic()
+            print("[rec] JARVIS fertig — Mikrofon jetzt aktiv", flush=True)
         prev_speaking = cur_speaking
 
         # Conversation-Timeout: kein JARVIS-Response seit CONVO_TIMEOUT → Wake Word
         if in_conversation and not cur_speaking and time.monotonic() - last_response_time > CONVO_TIMEOUT:
-            print("[client] Kein Response — zurück zum Wake Word.", flush=True)
+            print("[rec] Kein Response — zurück zum Wake Word.", flush=True)
             in_conversation = False
             silent_turns = 0
 
@@ -169,19 +173,19 @@ def _record_loop(
 
         if not in_conversation:
             if not MANUAL_MODE:
-                print("[client] Warte auf Wake Word…", flush=True)
+                print("[rec] Warte auf Wake Word…", flush=True)
                 interrupt.clear()
                 try:
                     if not audio.listen_for_wake_word(interrupt=interrupt):
                         if stop_event.is_set():
                             break
                         continue
-                    print("[client] Wake Word erkannt!", flush=True)
+                    print("[rec] Wake Word erkannt!", flush=True)
                     audio.play_beep()
                     time.sleep(0.3)
                     last_response_time = time.monotonic()
                 except Exception as e:
-                    print(f"[client] Wake Word Fehler: {e}", flush=True)
+                    print(f"[rec] Wake Word Fehler: {e}", flush=True)
                     if stop_event.is_set():
                         break
                     stop_event.wait(timeout=3.0)
@@ -189,21 +193,24 @@ def _record_loop(
                 if stop_event.is_set():
                     break
             else:
-                print("[client] Bereit (kein Wake Word)…", flush=True)
+                print("[rec] Bereit (kein Wake Word)…", flush=True)
 
         if _jarvis_speaking.is_set():
+            print("[rec] JARVIS spricht noch — Aufnahme übersprungen", flush=True)
             continue
 
         interrupt.clear()
-        print("[client] Höre zu…", flush=True)
+        t_rec_start = time.monotonic()
+        print("[rec] Höre zu…", flush=True)
         try:
             wav_path = audio.record_with_vad(interrupt=interrupt)
         except Exception as e:
-            print(f"[client] Aufnahme-Fehler: {e}", flush=True)
+            print(f"[rec] Aufnahme-Fehler: {e}", flush=True)
             wav_path = None
 
         if not wav_path:
             silent_turns += 1
+            print(f"[rec] Kein Audio — silent_turns={silent_turns}", flush=True)
             if silent_turns >= 2:
                 in_conversation = False
                 silent_turns = 0
@@ -219,6 +226,7 @@ def _record_loop(
         except OSError:
             continue
 
+        print(f"[rec] Sende {len(wav_bytes)/1024:.1f}KB an Server (aufnahme={time.monotonic()-t_rec_start:.1f}s)", flush=True)
         asyncio.run_coroutine_threadsafe(ws.send(wav_bytes), ws_loop)
 
 

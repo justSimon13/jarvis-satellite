@@ -172,39 +172,55 @@ def record_with_vad(interrupt: threading.Event | None = None) -> str:
     silence_count = 0
     speaking_started = False
     warmup_frames = 0  # Erste Frames ignorieren — lässt JARVIS-Echo abklingen
+    stop_reason = "unknown"
+    speech_onset_frame = None
+    speech_onset_rms = None
 
     def audio_callback(indata, frame_count, time_info, status):
         nonlocal speech_count, silence_count, speaking_started, warmup_frames
+        nonlocal stop_reason, speech_onset_frame, speech_onset_rms
         chunk = indata[:, 0].copy()
         frames.append(chunk)
         warmup_frames += 1
+        if warmup_frames == VAD_WARMUP_FRAMES:
+            print(f"[vad] Warmup abgeschlossen (frame {warmup_frames})", flush=True)
         if warmup_frames <= VAD_WARMUP_FRAMES:
             return  # Warmup: keine Spracherkennung in den ersten ~0.5s
         rms = float(np.sqrt(np.mean(chunk ** 2)))
         if rms > _RMS_SPEECH:
             speech_count += 1
             silence_count = 0
-            if speech_count >= _SPEECH_ONSET:
+            if speech_count >= _SPEECH_ONSET and not speaking_started:
                 speaking_started = True
+                speech_onset_frame = warmup_frames
+                speech_onset_rms = rms
+                print(f"[vad] Sprache erkannt — frame={warmup_frames} rms={rms:.4f}", flush=True)
         else:
             silence_count += 1
             speech_count = 0
             if speaking_started and silence_count >= _SILENCE_FRAMES:
+                stop_reason = "silence"
                 stop_event.set()
 
-    deadline = time.monotonic() + VAD_MAX_SECONDS
+    t_start = time.monotonic()
+    deadline = t_start + VAD_MAX_SECONDS
     with _open_input_stream(SAMPLE_RATE, VAD_BLOCKSIZE, audio_callback):
         while not stop_event.is_set():
             if interrupt and interrupt.is_set():
+                stop_reason = "interrupt"
                 stop_event.set()
                 break
             if time.monotonic() >= deadline:
+                stop_reason = "timeout"
                 stop_event.set()
                 break
             stop_event.wait(timeout=0.2)
 
+    duration = time.monotonic() - t_start
     if not frames or not speaking_started:
+        print(f"[vad] Kein Sprachbeginn — verworfen ({duration:.1f}s)", flush=True)
         return ""
+    print(f"[vad] Aufnahme beendet: grund={stop_reason} dauer={duration:.1f}s onset_frame={speech_onset_frame}", flush=True)
 
     audio = np.concatenate(frames, axis=0)
     audio_int16 = (audio * 32767).astype(np.int16)
