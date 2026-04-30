@@ -66,7 +66,7 @@ def _ensure_bt_connected() -> None:
 
 def _play_loop(audio_queue: queue.Queue):
     """Spielt eingehende PCM-Chunks vom Server ab. Stoppt bei _interrupt_playback."""
-    IDLE_TIMEOUT = 0.4
+    IDLE_TIMEOUT = 2.0
 
     while True:
         chunk = audio_queue.get()

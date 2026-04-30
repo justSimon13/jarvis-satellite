@@ -92,8 +92,9 @@ def _open_input_stream(samplerate: int, blocksize: int, callback) -> sd.InputStr
 SAMPLE_RATE = 16000
 VAD_BLOCKSIZE = 512
 VAD_MAX_SECONDS = 30
+VAD_WARMUP_FRAMES = 16  # ~0.5s bei 16kHz/512 — ignoriert Echo-Nachhall nach JARVIS-Antwort
 
-_RMS_SPEECH   = 0.012  # Energie-Schwelle ab der als Sprache gilt
+_RMS_SPEECH   = 0.018  # Energie-Schwelle ab der als Sprache gilt (höher = weniger Echo-Anfälligkeit)
 _SPEECH_ONSET = 3      # Aufeinanderfolgende laute Frames um Sprache zu bestätigen
 _SILENCE_FRAMES = 47   # ~1.5s Stille bei 16kHz/512 (512/16000*1000 ≈ 32ms/Frame)
 
@@ -170,11 +171,15 @@ def record_with_vad(interrupt: threading.Event | None = None) -> str:
     speech_count = 0
     silence_count = 0
     speaking_started = False
+    warmup_frames = 0  # Erste Frames ignorieren — lässt JARVIS-Echo abklingen
 
     def audio_callback(indata, frame_count, time_info, status):
-        nonlocal speech_count, silence_count, speaking_started
+        nonlocal speech_count, silence_count, speaking_started, warmup_frames
         chunk = indata[:, 0].copy()
         frames.append(chunk)
+        warmup_frames += 1
+        if warmup_frames <= VAD_WARMUP_FRAMES:
+            return  # Warmup: keine Spracherkennung in den ersten ~0.5s
         rms = float(np.sqrt(np.mean(chunk ** 2)))
         if rms > _RMS_SPEECH:
             speech_count += 1
