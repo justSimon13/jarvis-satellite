@@ -52,6 +52,11 @@ echo "Erstelle Python-Umgebung..."
 "$INSTALL_DIR/.venv/bin/pip" install -q -r "$INSTALL_DIR/requirements.txt"
 echo "✓ Python-Umgebung"
 
+# ── Wake Word Modell herunterladen ────────────────────────────────────────────
+echo "Lade Wake Word Modell (hey_jarvis)..."
+"$INSTALL_DIR/.venv/bin/python3" -c "from openwakeword.utils import download_models; download_models()" 2>&1 | tail -3
+echo "✓ Wake Word Modell"
+
 # ── 5. .env konfigurieren ─────────────────────────────────────────────────────
 # Werte können als Env-Variablen übergeben werden, z.B.:
 #   JARVIS_SERVER=ws://localhost:8765 CLIENT_NAME=wohnzimmer bash install.sh
@@ -81,13 +86,16 @@ if ! grep -q "^JARVIS_SERVER=ws://" "$INSTALL_DIR/.env" 2>/dev/null; then
 fi
 
 # ── 6. ALSA-Default konfigurieren (Mic + Speaker getrennt) ───────────────────
-# Erkennt automatisch: erstes USB-Capture-Gerät als Mic, erstes USB-Playback-Gerät als Speaker
-MIC_CARD=$(aplay -l 2>/dev/null | grep -i "usb\|uac\|jieli\|pebble" | head -1 | grep -o 'card [0-9]*' | grep -o '[0-9]*' || echo "")
-SPK_CARD=$(aplay -l 2>/dev/null | grep -i "usb\|pebble\|speaker" | head -1 | grep -o 'card [0-9]*' | grep -o '[0-9]*' || echo "")
+# /proc/asound/cards lesen — braucht keine audio-Gruppe, funktioniert immer
+_card_num() {
+    grep -i "$1" /proc/asound/cards 2>/dev/null | grep -o '^ *[0-9]*' | tr -d ' ' | head -1
+}
+MIC_CARD=$(_card_num "UAC\|Jieli\|UACDemo\|Microphone\|mic")
+SPK_CARD=$(_card_num "Pebble\|Speaker\|USB-Audio")
 
 if [ -n "$MIC_CARD" ] || [ -n "$SPK_CARD" ]; then
     MIC_CARD=${MIC_CARD:-0}
-    SPK_CARD=${SPK_CARD:-0}
+    SPK_CARD=${SPK_CARD:-$MIC_CARD}
     cat > "$HOME/.asoundrc" << ASOUND
 pcm.!default {
     type asym
@@ -107,7 +115,7 @@ ctl.!default {
 ASOUND
     echo "✓ ALSA konfiguriert — Mic: card $MIC_CARD, Speaker: card $SPK_CARD"
 else
-    echo "⚠ ALSA-Geräte nicht erkannt — .asoundrc nicht gesetzt"
+    echo "⚠ Keine USB-Audiogeräte in /proc/asound/cards — .asoundrc nicht gesetzt"
 fi
 
 # ── 7. Alten User-Service aufräumen (falls vorhanden) ────────────────────────
