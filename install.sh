@@ -123,8 +123,9 @@ if systemctl --user is-enabled "$SERVICE_NAME" 2>/dev/null | grep -q "enabled"; 
     echo "Deaktiviere alten User-Service..."
     systemctl --user disable --now "$SERVICE_NAME" 2>/dev/null || true
 fi
-# Manuell gestartete PulseAudio-Instanz stoppen (System-Service braucht kein PA)
+# PulseAudio stoppen und deaktivieren — System-Service nutzt ALSA direkt
 pulseaudio --kill 2>/dev/null || true
+systemctl --user disable --now pulseaudio pulseaudio.socket 2>/dev/null || true
 
 # ── 9. systemd System-Service (kein User-Service) ─────────────────────────────
 # System-Service mit expliziter Gruppe: funktioniert unabhängig von Login-Session
