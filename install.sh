@@ -52,12 +52,32 @@ echo "Erstelle Python-Umgebung..."
 "$INSTALL_DIR/.venv/bin/pip" install -q -r "$INSTALL_DIR/requirements.txt"
 echo "✓ Python-Umgebung"
 
-# ── 5. .env anlegen (wenn nicht vorhanden) ────────────────────────────────────
+# ── 5. .env konfigurieren ─────────────────────────────────────────────────────
+# Werte können als Env-Variablen übergeben werden, z.B.:
+#   JARVIS_SERVER=ws://localhost:8765 CLIENT_NAME=wohnzimmer bash install.sh
 if [ ! -f "$INSTALL_DIR/.env" ]; then
     cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
-    echo "✓ .env erstellt — Server-IP bitte eintragen: nano $INSTALL_DIR/.env"
-else
-    echo "✓ .env bereits vorhanden"
+fi
+
+_env_set() {
+    local key="$1" val="$2"
+    if grep -q "^${key}=" "$INSTALL_DIR/.env" 2>/dev/null; then
+        sed -i "s|^${key}=.*|${key}=${val}|" "$INSTALL_DIR/.env"
+    else
+        echo "${key}=${val}" >> "$INSTALL_DIR/.env"
+    fi
+}
+
+[ -n "$JARVIS_SERVER"       ] && _env_set "JARVIS_SERVER"       "$JARVIS_SERVER"
+[ -n "$CLIENT_NAME"         ] && _env_set "CLIENT_NAME"         "$CLIENT_NAME"
+[ -n "$MANUAL_MODE"         ] && _env_set "MANUAL_MODE"         "$MANUAL_MODE"
+[ -n "$AUDIO_INPUT_DEVICE"  ] && _env_set "AUDIO_INPUT_DEVICE"  "$AUDIO_INPUT_DEVICE"
+[ -n "$AUDIO_OUTPUT_DEVICE" ] && _env_set "AUDIO_OUTPUT_DEVICE" "$AUDIO_OUTPUT_DEVICE"
+[ -n "$BT_SPEAKER_MAC"      ] && _env_set "BT_SPEAKER_MAC"      "$BT_SPEAKER_MAC"
+
+echo "✓ .env konfiguriert"
+if ! grep -q "^JARVIS_SERVER=ws://" "$INSTALL_DIR/.env" 2>/dev/null; then
+    echo "  ⚠ JARVIS_SERVER nicht gesetzt — bitte nachtragen: nano $INSTALL_DIR/.env"
 fi
 
 # ── 6. ALSA-Default konfigurieren (Mic + Speaker getrennt) ───────────────────
@@ -167,9 +187,13 @@ echo "  Installation abgeschlossen!"
 echo "════════════════════════════════════════"
 echo ""
 echo "  Nächste Schritte:"
+if ! grep -q "^JARVIS_SERVER=ws://" "$INSTALL_DIR/.env" 2>/dev/null; then
 echo "  1. Server-IP eintragen:   nano $INSTALL_DIR/.env"
 echo "  2. Client starten:        sudo systemctl start $SERVICE_NAME"
-echo "  3. Logs verfolgen:        journalctl -u $SERVICE_NAME -f"
+else
+echo "  1. Client starten:        sudo systemctl start $SERVICE_NAME"
+fi
+echo "  Logs verfolgen:           journalctl -u $SERVICE_NAME -f"
 echo ""
 echo "  Auto-Update: läuft alle 30 Min, prüft auf neues GitHub-Release."
 echo "  Manuell updaten: bash $INSTALL_DIR/update.sh"
