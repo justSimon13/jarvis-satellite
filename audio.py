@@ -39,7 +39,7 @@ def _input_channels() -> int:
 
 
 _INPUT_BLACKLIST = ("iphone", "ipad", "teams", "eqmac", "monitor")
-_INPUT_PREFER = ("uacdemo", "mikrofon", "microphone", "pulse", "default", "kopfhörer", "headphone", "macbook")
+_INPUT_PREFER = ("default", "mikrofon", "microphone", "kopfhörer", "headphone", "macbook", "uacdemo", "pulse")
 
 
 def _rank_input_device(name: str) -> int:
