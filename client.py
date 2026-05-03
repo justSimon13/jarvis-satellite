@@ -78,12 +78,8 @@ def _play_loop(audio_queue: queue.Queue):
         _jarvis_speaking.set()
         _ensure_bt_connected()
         try:
-            with sd.OutputStream(
-                samplerate=P.PCM_SAMPLERATE,
-                channels=P.PCM_CHANNELS,
-                dtype=P.PCM_DTYPE,
-                device=AUDIO_OUTPUT_DEVICE,
-            ) as stream:
+            import audio as _audio
+            with _audio.open_output_stream(P.PCM_SAMPLERATE, P.PCM_CHANNELS, P.PCM_DTYPE) as stream:
                 print("[play] Stream geöffnet", flush=True)
                 stream.write(np.frombuffer(chunk, dtype=np.int16))
                 while not _interrupt_playback.is_set():

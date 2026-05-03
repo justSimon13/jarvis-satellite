@@ -38,16 +38,27 @@ def _input_channels() -> int:
         return 1
 
 
-_INPUT_BLACKLIST = ("iphone", "ipad", "teams", "eqmac", "monitor")
-_INPUT_PREFER = ("default", "mikrofon", "microphone", "kopfhörer", "headphone", "macbook", "uacdemo", "pulse")
+_INPUT_BLACKLIST  = ("iphone", "ipad", "teams", "eqmac", "monitor")
+_INPUT_PREFER     = ("default", "mikrofon", "microphone", "kopfhörer", "headphone", "macbook", "uacdemo", "pulse")
+_OUTPUT_BLACKLIST = ("hdmi", "spdif", "monitor", "null")
+_OUTPUT_PREFER    = ("pebble", "speaker", "usb", "lautsprecher", "macbook", "default")
 
 
 def _rank_input_device(name: str) -> int:
-    """Niedrigerer Rang = höhere Priorität."""
     n = name.lower()
     if any(b in n for b in _INPUT_BLACKLIST):
         return 99
     for i, p in enumerate(_INPUT_PREFER):
+        if p in n:
+            return i
+    return 50
+
+
+def _rank_output_device(name: str) -> int:
+    n = name.lower()
+    if any(b in n for b in _OUTPUT_BLACKLIST):
+        return 99
+    for i, p in enumerate(_OUTPUT_PREFER):
         if p in n:
             return i
     return 50
@@ -88,6 +99,36 @@ def _open_input_stream(samplerate: int, blocksize: int, callback) -> sd.InputStr
         except sd.PortAudioError as e:
             print(f"[audio] [{device}] fehlgeschlagen: {e}", flush=True)
     raise sd.PortAudioError("InputStream: kein Input-Gerät funktioniert")
+
+
+def open_output_stream(samplerate: int, channels: int, dtype: str) -> sd.OutputStream:
+    """Öffnet OutputStream. Env-Override zuerst, sonst nach Präferenz sortiert — meidet HDMI."""
+    explicit = os.getenv("AUDIO_OUTPUT_DEVICE")
+    if explicit:
+        candidates: list[int] = [int(explicit)]
+    else:
+        devs = [
+            (i, info) for i, info in enumerate(sd.query_devices())
+            if info.get("max_output_channels", 0) > 0
+        ]
+        devs.sort(key=lambda x: _rank_output_device(x[1]["name"]))
+        candidates = [i for i, _ in devs]
+
+    for device in candidates:
+        try:
+            dev_info = sd.query_devices(device)
+            ch = max(1, min(channels, int(dev_info.get("max_output_channels", channels))))
+        except Exception:
+            dev_info = {}
+            ch = channels
+        try:
+            stream = sd.OutputStream(samplerate=samplerate, channels=ch, dtype=dtype, device=device)
+            print(f"[audio] OutputStream: [{device}] {dev_info.get('name', '?')!r}", flush=True)
+            return stream
+        except sd.PortAudioError as e:
+            print(f"[audio] [{device}] output fehlgeschlagen: {e}", flush=True)
+    raise sd.PortAudioError("OutputStream: kein Output-Gerät funktioniert")
+
 
 SAMPLE_RATE = 16000
 VAD_BLOCKSIZE = 512
